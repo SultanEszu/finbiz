@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:finbiz/core/constants/supabase_config.dart';
+import 'package:finbiz/core/constants/api_config.dart';
 import 'package:finbiz/features/auth/auth_screen.dart';
 import 'package:finbiz/features/auth/change_password_screen.dart';
 import 'package:finbiz/features/auth/setup_screen.dart';
@@ -15,27 +15,21 @@ import 'package:finbiz/features/reports/reports_screen.dart';
 import 'package:finbiz/features/savings/savings_screen.dart';
 import 'package:finbiz/features/settings/settings_screen.dart';
 import 'package:finbiz/features/transactions/transactions_screen.dart';
+import 'package:finbiz/data/services/auth_service.dart';
+import 'package:finbiz/data/services/api_client.dart';
+import 'package:finbiz/core/theme/app_theme.dart';
+import 'package:finbiz/core/widgets/finbiz_logo.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/models/user_profile.dart';
 
 class _AuthRefreshListenable extends ChangeNotifier {
-  _AuthRefreshListenable(Stream<AuthState>? authChanges) {
-    _subscription = authChanges?.listen((state) {
-      if (state.event == AuthChangeEvent.passwordRecovery) {
-        isPasswordRecovery = true;
-      } else if (state.event == AuthChangeEvent.userUpdated ||
-          state.event == AuthChangeEvent.signedOut) {
-        isPasswordRecovery = false;
-      }
-      notifyListeners();
-    });
+  _AuthRefreshListenable(Stream<dynamic> authChanges) {
+    _subscription = authChanges.listen((_) => notifyListeners());
   }
 
-  StreamSubscription<AuthState>? _subscription;
-  bool isPasswordRecovery = false;
+  StreamSubscription<dynamic>? _subscription;
 
   @override
   void dispose() {
@@ -44,11 +38,24 @@ class _AuthRefreshListenable extends ChangeNotifier {
   }
 }
 
+String _profileFailureReason(Object error) {
+  if (error is ApiException) {
+    final kind = profileFailureFromApi(error).kind;
+    return switch (kind) {
+      ProfileFailureKind.databaseNotReady => 'database',
+      ProfileFailureKind.profilePermissionDenied => 'permission',
+      ProfileFailureKind.creatorProvisioningRequired => 'creator-provisioning',
+      ProfileFailureKind.missingProfile => 'missing-profile',
+      ProfileFailureKind.invalidRole => 'invalid-role',
+      ProfileFailureKind.profileUnavailable => 'database',
+    };
+  }
+  return 'database';
+}
+
 GoRouter createAppRouter() {
   final authRefresh = _AuthRefreshListenable(
-    SupabaseConfig.isConfigured && SupabaseConfig.initializationFailure == null
-        ? Supabase.instance.client.auth.onAuthStateChange
-        : null,
+    AuthService(ApiClient.instance).authStateChanges,
   );
 
   return GoRouter(
@@ -56,42 +63,43 @@ GoRouter createAppRouter() {
     refreshListenable: authRefresh,
     redirect: (context, state) async {
       final location = state.matchedLocation;
-      if (SupabaseConfig.initializationFailure != null ||
-          !SupabaseConfig.isConfigured) {
+      if (ApiConfig.initializationFailure != null || !ApiConfig.isConfigured) {
         return location == '/setup' ? null : '/setup';
       }
       if (location == '/setup') {
         return '/splash';
       }
 
-      final session = Supabase.instance.client.auth.currentSession;
-      const publicLocations = {'/login', '/register', '/forgot-password'};
+      final session = ApiClient.instance.currentUser;
+      const publicLocations = {
+        '/login',
+        '/register',
+        '/forgot-password',
+        '/reset-password',
+      };
       if (session == null) {
         return publicLocations.contains(location) ? null : '/login';
       }
-      if (authRefresh.isPasswordRecovery && location != '/change-password') {
-        return '/change-password';
-      }
-      if (publicLocations.contains(location) || location == '/splash') {
-        return '/dashboard';
-      }
-
       Map<String, dynamic>? profile;
       try {
-        profile = await Supabase.instance.client
-            .from('profiles')
-            .select('role, must_change_password')
-            .eq('id', session.user.id)
-            .maybeSingle();
+        final currentProfile = await AuthService(ApiClient.instance)
+            .getProfile();
+        profile = currentProfile == null
+            ? null
+            : {
+                'role': currentProfile.role.name,
+                'must_change_password': currentProfile.mustChangePassword,
+              };
         if (profile == null) {
           return location == '/access-error'
               ? null
               : '/access-error?reason=missing-profile';
         }
-      } catch (_) {
+      } catch (error) {
+        final reason = _profileFailureReason(error);
         return location == '/access-error'
             ? null
-            : '/access-error?reason=database';
+            : '/access-error?reason=$reason';
       }
 
       final roleName = profile['role'] as String?;
@@ -106,6 +114,11 @@ GoRouter createAppRouter() {
           profile['must_change_password'] as bool? ?? false;
       if (mustChangePassword && location != '/change-password') {
         return '/change-password';
+      }
+      if (publicLocations.contains(location) ||
+          location == '/splash' ||
+          location == '/access-error') {
+        return '/dashboard';
       }
       if (location == '/admin/users' || location == '/creator/system') {
         final role = userRoleFromString(roleName);
@@ -147,7 +160,10 @@ GoRouter createAppRouter() {
       ),
       GoRoute(
         path: '/reset-password',
-        redirect: (context, state) => '/change-password',
+        builder: (context, state) => ChangePasswordScreen(
+          email: state.uri.queryParameters['email'],
+          token: state.uri.queryParameters['token'],
+        ),
       ),
       GoRoute(
         path: '/access-error',
@@ -236,26 +252,118 @@ class _AccessErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final message = switch (reason) {
-      'missing-profile' => 'Sesi login aktif, tetapi profil belum tersedia. Minta pengelola memeriksa provisioning akun.',
-      'invalid-role' => 'Profil ditemukan, tetapi role tidak valid. Minta Creator memeriksa role akun.',
-      'database' => 'Sesi login aktif, tetapi database/profil tidak dapat dibaca. Minta pengelola memeriksa migration dan RLS.',
-      _ => 'Sesi Anda aktif, tetapi profil atau database belum dapat diverifikasi. Minta pengelola memastikan migration Supabase sudah diterapkan.',
+    final (title, message, icon, color) = switch (reason) {
+      'missing-profile' => (
+        'Profil belum tersedia',
+        'Login berhasil, tetapi profil akun belum ditemukan. Minta pengelola memeriksa provisioning profil dan memastikan profiles.id sama dengan ID akun Auth.',
+        Icons.person_search_rounded,
+        AppTheme.warning,
+      ),
+      'invalid-role' => (
+        'Role akun tidak valid',
+        'Profil ditemukan, tetapi role tidak dikenali. Minta Creator memeriksa role akun melalui proses administrasi.',
+        Icons.admin_panel_settings_outlined,
+        AppTheme.warning,
+      ),
+      'permission' => (
+        'Akses profil ditolak',
+        'Login berhasil, tetapi kebijakan RLS menolak pembacaan profil. Pengelola perlu memastikan pengguna dapat membaca profilnya sendiri.',
+        Icons.lock_outline_rounded,
+        AppTheme.error,
+      ),
+      'creator-provisioning' => (
+        'Profil Creator belum disiapkan',
+        'Akun Creator berhasil diautentikasi, tetapi profilnya belum diprovisikan. Administrator perlu memeriksa konfigurasi provisioning akun.',
+        Icons.admin_panel_settings_outlined,
+        AppTheme.warning,
+      ),
+      'database' => (
+        'Profil belum dapat dimuat',
+        'Login berhasil, tetapi API FinBiz tidak dapat membaca profil dari database MySQL. Pengelola perlu memeriksa migration dan konfigurasi API.',
+        Icons.storage_rounded,
+        AppTheme.error,
+      ),
+      _ => (
+        'Profil belum dapat diverifikasi',
+        'Sesi login aktif, tetapi profil belum dapat dibaca. Periksa koneksi API dan database MySQL.',
+        Icons.cloud_off_rounded,
+        AppTheme.error,
+      ),
     };
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(message, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () => context.go('/dashboard'),
-                child: const Text('Periksa kembali'),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const FinBizLogo(size: 24),
+                      const SizedBox(height: 28),
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor: color.withValues(alpha: 0.1),
+                        child: Icon(icon, size: 32, color: color),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => GoRouter.of(context).refresh(),
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Coba lagi'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            try {
+                              await AuthService(ApiClient.instance).signOut();
+                            } catch (error) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(authErrorMessage(error)),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.logout_rounded),
+                          label: const Text('Keluar dan masuk ulang'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),

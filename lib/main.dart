@@ -1,18 +1,18 @@
 import 'package:finbiz/app/app.dart';
-import 'package:finbiz/core/constants/supabase_config.dart';
+import 'package:finbiz/core/constants/api_config.dart';
+import 'package:finbiz/data/services/api_client.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (SupabaseConfig.isConfigured) {
+  await initializeDateFormatting('id_ID');
+  if (ApiConfig.isConfigured) {
     try {
-      await Supabase.initialize(
-        url: SupabaseConfig.url,
-        publishableKey: SupabaseConfig.publishableKey,
-      );
-    } catch (_) {
-      SupabaseConfig.initializationFailure = 'Supabase gagal diinisialisasi. Periksa URL, publishable key, dan koneksi jaringan.';
+      await ApiClient.instance.initialize();
+    } catch (error) {
+      ApiConfig.initializationFailure =
+          'Backend FinBiz gagal dihubungi. Periksa URL API dan koneksi jaringan ($error).';
     }
   }
   runApp(const FinBizApp());

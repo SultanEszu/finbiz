@@ -1,4 +1,4 @@
-import 'package:finbiz/core/providers/supabase_providers.dart';
+import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
 import 'package:finbiz/data/services/auth_service.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 class ChangePasswordScreen extends ConsumerStatefulWidget {
-  const ChangePasswordScreen({super.key});
+  const ChangePasswordScreen({this.email, this.token, super.key});
+
+  final String? email;
+  final String? token;
 
   @override
   ConsumerState<ChangePasswordScreen> createState() =>
@@ -29,16 +32,24 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final service = ref.read(authServiceProvider);
-    if (service == null) return;
-
     setState(() => _isLoading = true);
     try {
-      await service.changePassword(_passwordController.text);
+      if (widget.email != null && widget.token != null) {
+        await service.resetPassword(
+          email: widget.email!,
+          token: widget.token!,
+          password: _passwordController.text,
+        );
+      } else {
+        await service.changePassword(_passwordController.text);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Kata sandi berhasil diperbarui.')),
       );
-      context.go('/dashboard');
+      context.go(
+        widget.email != null && widget.token != null ? '/login' : '/dashboard',
+      );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)

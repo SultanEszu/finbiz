@@ -1,5 +1,5 @@
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
-import 'package:finbiz/core/constants/supabase_config.dart';
+import 'package:finbiz/core/constants/api_config.dart';
 import 'package:flutter/material.dart';
 
 class SetupScreen extends StatelessWidget {
@@ -19,7 +19,7 @@ class SetupScreen extends StatelessWidget {
                 const FinBizLogo(),
                 const SizedBox(height: 24),
                 Text(
-                  'Supabase belum dikonfigurasi',
+                  'API FinBiz belum dikonfigurasi',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
@@ -28,12 +28,12 @@ class SetupScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  SupabaseConfig.initializationFailure ?? 'Supabase belum dikonfigurasi. File konfigurasi lokal diperlukan untuk menghubungkan aplikasi.',
+                  ApiConfig.initializationFailure ?? 'URL backend API diperlukan untuk menghubungkan aplikasi.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Jalankan aplikasi dengan --dart-define-from-file=supabase.local.json setelah mengisi URL project dan publishable key.',
+                  'Jalankan aplikasi dengan --dart-define=API_BASE_URL=https://alamat-backend-anda.',
                   textAlign: TextAlign.center,
                 ),
               ],

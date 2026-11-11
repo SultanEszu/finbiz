@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/providers/api_providers.dart';
+import '../services/api_client.dart';
 import '../models/finance_models.dart';
 
 class FinanceState {
@@ -89,7 +90,7 @@ class FinanceState {
 }
 
 class FinanceRepository extends AsyncNotifier<FinanceState> {
-  SupabaseClient get _client => Supabase.instance.client;
+  ApiClient get _client => ApiClient.instance;
   FinanceState get _current => state.value ?? FinanceState.initialState();
 
   double get monthlyIncome => _current.monthlyTotal(TransactionType.income);
@@ -103,44 +104,24 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
   double get payableTotal => _current.payableTotal;
 
   @override
-  FutureOr<FinanceState> build() => _loadState();
+  FutureOr<FinanceState> build() {
+    ref.watch(authStateProvider);
+    return _loadState();
+  }
 
   Future<FinanceState> _loadState() async {
-    if (_client.auth.currentUser == null) {
+    if (_client.currentUser == null) {
       throw StateError('Sesi pengguna tidak tersedia.');
     }
 
-    final categoryRows = await _client
-        .from('categories')
-        .select('id, name, type, icon_name, color_value')
-        .order('name');
-    final transactionRows = await _client
-        .from('transactions')
-        .select(
-          'id, title, category_id, amount, transaction_date, transaction_type, description',
-        )
-        .eq('status', 'posted')
-        .order('transaction_date', ascending: false);
-    final balanceRows = await _client
-        .from('cash_account_balances')
-        .select('balance');
-    final debtRows = await _client
-        .from('debts')
-        .select('id, name, contact, amount, due_date, type, description')
-        .order('due_date');
-    final budgetRows = await _client
-        .from('budgets')
-        .select('id, amount, period, start_date, end_date')
-        .order('end_date');
-    final notificationRows = await _client
-        .from('notifications')
-        .select('id, title, message, is_read, created_at')
-        .order('created_at', ascending: false)
-        .limit(5);
-    final savingsRows = await _client
-        .from('savings')
-        .select('id, target_name, target_amount, current_amount, target_date')
-        .order('created_at', ascending: false);
+    final response = await _client.get('/finance');
+    final categoryRows = _rows(response, 'categories');
+    final transactionRows = _rows(response, 'transactions');
+    final balanceRows = _rows(response, 'cash_account_balances');
+    final debtRows = _rows(response, 'debts');
+    final budgetRows = _rows(response, 'budgets');
+    final notificationRows = _rows(response, 'notifications');
+    final savingsRows = _rows(response, 'savings');
 
     return FinanceState(
       categories: categoryRows.map(_categoryFromRow).toList(),
@@ -163,76 +144,77 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
   }
 
   Future<void> addTransaction(FinanceTransaction transaction) async {
-    final userId = _requireUserId();
-    await _client.from('transactions').insert({
-      'user_id': userId,
-      'title': transaction.title,
-      'category_id': transaction.categoryId.isEmpty
-          ? null
-          : transaction.categoryId,
-      'amount': transaction.amount,
-      'transaction_date': transaction.date.toIso8601String().substring(0, 10),
-      'transaction_type': transaction.type.name,
-      'description': transaction.description,
-      'status': 'posted',
-    });
+    _requireUserId();
+    await _client.post(
+      '/transactions',
+      body: {
+        'title': transaction.title,
+        'category_id': transaction.categoryId.isEmpty
+            ? null
+            : transaction.categoryId,
+        'amount': transaction.amount,
+        'transaction_date': transaction.date.toIso8601String().substring(0, 10),
+        'transaction_type': transaction.type.name,
+        'description': transaction.description,
+      },
+    );
     await _reload();
   }
 
   Future<void> updateTransaction(FinanceTransaction transaction) async {
-    await _client
-        .from('transactions')
-        .update({
-          'title': transaction.title,
-          'category_id': transaction.categoryId.isEmpty
-              ? null
-              : transaction.categoryId,
-          'amount': transaction.amount,
-          'transaction_date': transaction.date.toIso8601String().substring(
-            0,
-            10,
-          ),
-          'transaction_type': transaction.type.name,
-          'description': transaction.description,
-        })
-        .eq('id', transaction.id);
+    await _client.put(
+      '/transactions/${transaction.id}',
+      body: {
+        'title': transaction.title,
+        'category_id': transaction.categoryId.isEmpty
+            ? null
+            : transaction.categoryId,
+        'amount': transaction.amount,
+        'transaction_date': transaction.date.toIso8601String().substring(0, 10),
+        'transaction_type': transaction.type.name,
+        'description': transaction.description,
+      },
+    );
     await _reload();
   }
 
   Future<void> deleteTransaction(String transactionId) async {
-    await _client
-        .from('transactions')
-        .update({'status': 'voided'})
-        .eq('id', transactionId);
+    await _client.delete('/transactions/$transactionId');
     await _reload();
   }
 
   Future<void> addCategory(FinanceCategory category) async {
-    await _client.from('categories').insert({
-      'user_id': _requireUserId(),
-      'name': category.name,
-      'type': category.isExpense ? 'expense' : 'income',
-      'icon_name': category.iconName,
-      'color_value': category.colorValue,
-    });
+    _requireUserId();
+    await _client.post(
+      '/categories',
+      body: {
+        'name': category.name,
+        'type': category.isExpense ? 'expense' : 'income',
+        'icon_name': category.iconName,
+        'color_value': category.colorValue,
+      },
+    );
     await _reload();
   }
 
   Future<void> deleteCategory(String categoryId) async {
-    await _client.from('categories').delete().eq('id', categoryId);
+    await _client.delete('/categories/$categoryId');
     await _reload();
   }
 
   Future<void> addDebt(DebtEntry debt) async {
-    await _client.from('debts').insert({
-      'user_id': _requireUserId(),
-      'name': debt.name,
-      'contact': debt.contact,
-      'amount': debt.amount,
-      'due_date': debt.dueDate.toIso8601String().substring(0, 10),
-      'type': debt.type.name,
-      'description': debt.description,
-    });
+    _requireUserId();
+    await _client.post(
+      '/debts',
+      body: {
+        'name': debt.name,
+        'contact': debt.contact,
+        'amount': debt.amount,
+        'due_date': debt.dueDate.toIso8601String().substring(0, 10),
+        'type': debt.type.name,
+        'description': debt.description,
+      },
+    );
     await _reload();
   }
 
@@ -241,12 +223,15 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     required double targetAmount,
     DateTime? targetDate,
   }) async {
-    await _client.from('savings').insert({
-      'user_id': _requireUserId(),
-      'target_name': name.trim(),
-      'target_amount': targetAmount,
-      'target_date': targetDate?.toIso8601String().substring(0, 10),
-    });
+    _requireUserId();
+    await _client.post(
+      '/savings',
+      body: {
+        'target_name': name.trim(),
+        'target_amount': targetAmount,
+        'target_date': targetDate?.toIso8601String().substring(0, 10),
+      },
+    );
     await _reload();
   }
 
@@ -257,15 +242,15 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     if (amount <= 0 || target.currentAmount + amount > target.targetAmount) {
       throw ArgumentError('Jumlah setoran tidak valid.');
     }
-    await _client
-        .from('savings')
-        .update({'current_amount': target.currentAmount + amount})
-        .eq('id', target.id);
+    await _client.post(
+      '/savings/${target.id}/contributions',
+      body: {'amount': amount},
+    );
     await _reload();
   }
 
   Future<void> deleteSavingsTarget(String targetId) async {
-    await _client.from('savings').delete().eq('id', targetId);
+    await _client.delete('/savings/$targetId');
     await _reload();
   }
 
@@ -275,25 +260,33 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    await _client.from('budgets').insert({
-      'user_id': _requireUserId(),
-      'amount': amount,
-      'period': period,
-      'start_date': startDate.toIso8601String().substring(0, 10),
-      'end_date': endDate.toIso8601String().substring(0, 10),
-    });
+    _requireUserId();
+    await _client.post(
+      '/budgets',
+      body: {
+        'amount': amount,
+        'period': period,
+        'start_date': startDate.toIso8601String().substring(0, 10),
+        'end_date': endDate.toIso8601String().substring(0, 10),
+      },
+    );
     await _reload();
   }
 
   Future<void> deleteBudget(String budgetId) async {
-    await _client.from('budgets').delete().eq('id', budgetId);
+    await _client.delete('/budgets/$budgetId');
     await _reload();
   }
 
   String _requireUserId() {
-    final userId = _client.auth.currentUser?.id;
+    final userId = _client.currentUser?.id;
     if (userId == null) throw StateError('Silakan masuk kembali ke akun Anda.');
     return userId;
+  }
+
+  List<Map<String, dynamic>> _rows(Map<String, dynamic> response, String key) {
+    final rows = response[key] as List<dynamic>;
+    return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
   }
 
   Future<void> _reload() async {
@@ -350,14 +343,16 @@ final financeRepositoryProvider =
     );
 
 String financeErrorMessage(Object error) {
-  if (error is PostgrestException) {
-    if (error.code == '42501') {
+  if (error is ApiException) {
+    if (error.statusCode == 403) {
       return 'Anda tidak memiliki izin untuk operasi ini.';
     }
-    if (error.code == '23514' || error.code == '23503') {
-      return 'Data tidak valid atau memiliki relasi yang tidak sesuai.';
+    if (error.statusCode == 422) {
+      return 'Data tidak valid: ${error.message}';
     }
-    return 'Data gagal disimpan. Periksa koneksi dan coba lagi.';
+    if (error.statusCode >= 500) {
+      return 'Server FinBiz mengalami kendala. Periksa koneksi dan coba lagi.';
+    }
   }
   return 'Terjadi kesalahan saat menyimpan data. Coba lagi.';
 }

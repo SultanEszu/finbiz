@@ -1,4 +1,4 @@
-import 'package:finbiz/core/providers/supabase_providers.dart';
+import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

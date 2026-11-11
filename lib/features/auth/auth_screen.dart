@@ -1,6 +1,6 @@
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
-import 'package:finbiz/core/providers/supabase_providers.dart';
+import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/data/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,17 +42,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final service = ref.read(authServiceProvider);
-    if (service == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Layanan autentikasi belum siap. Periksa konfigurasi dan koneksi Supabase.',
-          ),
-        ),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
     try {
       switch (widget.mode) {

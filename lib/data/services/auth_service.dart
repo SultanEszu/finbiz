@@ -1,23 +1,22 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart';
-
+import '../models/app_user.dart';
 import '../models/user_profile.dart';
+import 'api_client.dart';
 
 class AuthService {
   AuthService(this._client);
 
-  final SupabaseClient _client;
+  final ApiClient _client;
 
-  Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
+  Stream<AppUser?> get authStateChanges => _client.authStateChanges;
 
-  User? get currentUser => _client.auth.currentUser;
+  AppUser? get currentUser => _client.currentUser;
 
   Future<void> signIn({required String email, required String password}) async {
-    await _client.auth.signInWithPassword(
-      email: email.trim(),
-      password: password,
+    final response = await _client.post(
+      '/auth/login',
+      body: {'email': email.trim(), 'password': password},
     );
-    await _ensureCurrentProfile();
+    await _saveSession(response);
   }
 
   Future<void> register({
@@ -25,52 +24,53 @@ class AuthService {
     required String password,
     required String fullName,
   }) async {
-    await _client.auth.signUp(
-      email: email.trim(),
-      password: password,
-      data: {'full_name': fullName.trim()},
+    final response = await _client.post(
+      '/auth/register',
+      body: {
+        'email': email.trim(),
+        'password': password,
+        'full_name': fullName.trim(),
+      },
     );
-    if (currentUser != null) {
-      await _ensureCurrentProfile();
-    }
+    await _saveSession(response);
   }
 
   Future<void> sendPasswordReset(String email) async {
-    await _client.auth.resetPasswordForEmail(
-      email.trim(),
-      redirectTo: kIsWeb
-          ? Uri.base.resolve('/change-password').toString()
-          : 'finbiz://reset-password',
+    await _client.post('/auth/forgot-password', body: {'email': email.trim()});
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String token,
+    required String password,
+  }) async {
+    await _client.post(
+      '/auth/reset-password',
+      body: {'email': email, 'token': token, 'password': password},
     );
+    await _client.clearSession();
   }
 
   Future<void> changePassword(String password) async {
-    await _client.auth.updateUser(UserAttributes(password: password));
-    await _client.rpc('mark_password_changed');
+    await _client.post('/auth/change-password', body: {'password': password});
   }
 
   Future<List<UserProfile>> getProfiles() async {
-    final rows = await _client
-        .from('profiles')
-        .select('id, email, full_name, role, avatar_url, must_change_password')
-        .order('full_name');
-    return rows.map(UserProfile.fromJson).toList();
+    final response = await _client.get('/profiles');
+    final users = response['users'] as List<dynamic>;
+    return users
+        .map(
+          (row) => UserProfile.fromJson(Map<String, dynamic>.from(row as Map)),
+        )
+        .toList();
   }
 
   Future<void> updateFullName(String fullName) async {
-    final userId = currentUser?.id;
-    if (userId == null) throw StateError('Sesi pengguna tidak tersedia.');
-    await _client
-        .from('profiles')
-        .update({'full_name': fullName.trim()})
-        .eq('id', userId);
+    await _client.patch('/profile', body: {'full_name': fullName.trim()});
   }
 
   Future<void> setUserRole(String userId, UserRole role) async {
-    await _client.rpc(
-      'set_user_role',
-      params: {'target_user_id': userId, 'new_role': role.name},
-    );
+    await _client.put('/profiles/$userId/role', body: {'role': role.name});
   }
 
   Future<void> createManagedUser({
@@ -78,10 +78,9 @@ class AuthService {
     required String password,
     required String fullName,
   }) async {
-    await _client.functions.invoke(
-      'manage-users',
+    await _client.post(
+      '/managed-users',
       body: {
-        'action': 'create',
         'email': email.trim(),
         'password': password,
         'full_name': fullName.trim(),
@@ -90,70 +89,27 @@ class AuthService {
   }
 
   Future<void> deleteManagedUser(String userId) async {
-    await _client.functions.invoke(
-      'manage-users',
-      body: {'action': 'delete', 'user_id': userId},
+    await _client.delete('/managed-users/$userId');
+  }
+
+  Future<void> signOut() async {
+    await _client.post('/auth/logout');
+    await _client.clearSession();
+  }
+
+  Future<UserProfile?> getProfile() async {
+    if (currentUser == null) return null;
+    final response = await _client.get('/auth/me');
+    return UserProfile.fromJson(
+      Map<String, dynamic>.from(response['user'] as Map),
     );
   }
 
-  Future<void> signOut() => _client.auth.signOut();
-
-  Future<UserProfile?> getProfile() async {
-    final user = currentUser;
-    if (user == null) return null;
-
-    final result = await _client
-        .from('profiles')
-        .select('id, email, full_name, role, avatar_url, must_change_password')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    if (result == null) return null;
-    return UserProfile.fromJson(result);
-  }
-
-  Future<void> _ensureCurrentProfile() async {
-    try {
-      await _client.rpc('ensure_current_profile');
-      final userId = currentUser?.id;
-      if (userId == null) {
-        throw const ProfileUnavailableException(
-          ProfileFailureKind.missingProfile,
-        );
-      }
-      final profile = await _client
-          .from('profiles')
-          .select('role')
-          .eq('id', userId)
-          .maybeSingle();
-      if (profile == null) {
-        throw const ProfileUnavailableException(
-          ProfileFailureKind.missingProfile,
-        );
-      }
-      final roleName = profile['role'] as String?;
-      if (roleName == null ||
-          !UserRole.values.any((role) => role.name == roleName)) {
-        throw const ProfileUnavailableException(ProfileFailureKind.invalidRole);
-      }
-    } on ProfileUnavailableException {
-      rethrow;
-    } on PostgrestException catch (error) {
-      if (error.code == 'PGRST202' ||
-          error.code == 'PGRST205' ||
-          error.code == '42P01' ||
-          error.code == '42883') {
-        throw const ProfileUnavailableException(
-          ProfileFailureKind.databaseNotReady,
-        );
-      }
-      if (error.code == '42501') {
-        throw const ProfileUnavailableException(
-          ProfileFailureKind.profilePermissionDenied,
-        );
-      }
-      rethrow;
-    }
+  Future<void> _saveSession(Map<String, dynamic> response) async {
+    final user = AppUser.fromJson(
+      Map<String, dynamic>.from(response['user'] as Map),
+    );
+    await _client.setSession(token: response['token'] as String, user: user);
   }
 }
 
@@ -162,6 +118,8 @@ enum ProfileFailureKind {
   missingProfile,
   invalidRole,
   profilePermissionDenied,
+  creatorProvisioningRequired,
+  profileUnavailable,
 }
 
 class ProfileUnavailableException implements Exception {
@@ -170,56 +128,44 @@ class ProfileUnavailableException implements Exception {
   final ProfileFailureKind kind;
 }
 
+ProfileUnavailableException profileFailureFromApi(ApiException error) {
+  final kind = switch (error.statusCode) {
+    403 => ProfileFailureKind.profilePermissionDenied,
+    404 => ProfileFailureKind.missingProfile,
+    409 => ProfileFailureKind.creatorProvisioningRequired,
+    422 => ProfileFailureKind.invalidRole,
+    500 || 503 => ProfileFailureKind.databaseNotReady,
+    _ => ProfileFailureKind.profileUnavailable,
+  };
+  return ProfileUnavailableException(kind);
+}
+
 String authErrorMessage(Object error) {
   if (error is ProfileUnavailableException) {
     return switch (error.kind) {
-      ProfileFailureKind.databaseNotReady => 'Autentikasi berhasil, tetapi database FinBiz belum siap. Minta pengelola menerapkan migration.',
+      ProfileFailureKind.databaseNotReady => 'Layanan FinBiz belum siap. Minta pengelola memeriksa konfigurasi API dan database MySQL.',
       ProfileFailureKind.missingProfile => 'Autentikasi berhasil, tetapi profil pengguna belum tersedia. Minta pengelola memeriksa provisioning profil.',
       ProfileFailureKind.invalidRole => 'Profil ditemukan, tetapi role tidak valid. Minta Creator memeriksa role akun melalui proses administrasi.',
-      ProfileFailureKind.profilePermissionDenied => 'Autentikasi berhasil, tetapi akses ke profil ditolak. Minta pengelola memeriksa kebijakan RLS profil.',
+      ProfileFailureKind.profilePermissionDenied => 'Autentikasi berhasil, tetapi akses ke profil ditolak. Minta pengelola memeriksa izin akun.',
+      ProfileFailureKind.creatorProvisioningRequired =>
+        'Akun Creator belum diprovisikan oleh administrator.',
+      ProfileFailureKind.profileUnavailable => 'Sesi login aktif, tetapi profil tidak dapat diverifikasi. Periksa server dan database.',
     };
   }
-  if (error is AuthException) {
-    final message = error.message.toLowerCase();
-    if (message.contains('invalid login credentials')) {
-      return 'Email atau kata sandi tidak sesuai.';
-    }
-    if (message.contains('email not confirmed')) {
-      return 'Konfirmasi email Anda sebelum masuk.';
-    }
-    if (message.contains('banned') || message.contains('disabled')) {
-      return 'Akun dinonaktifkan. Hubungi pengelola FinBiz.';
-    }
-    if (message.contains('user already registered')) {
-      return 'Email ini sudah terdaftar.';
-    }
-    if (message.contains('password should be at least')) {
-      return 'Kata sandi harus terdiri dari minimal 8 karakter.';
-    }
-    if (message.contains('rate limit')) {
-      return 'Terlalu banyak percobaan. Coba lagi beberapa saat.';
-    }
-    if (message.contains('network') ||
-        message.contains('fetch') ||
-        message.contains('socket')) {
-      return 'Koneksi internet bermasalah. Periksa jaringan Anda lalu coba lagi.';
-    }
-    return 'Autentikasi gagal. Periksa data Anda dan coba lagi.';
-  }
-  if (error is PostgrestException) {
-    if (error.code == '42501') {
+  if (error is ApiException) {
+    if (error.statusCode == 401) return 'Email atau kata sandi tidak sesuai.';
+    if (error.statusCode == 403) {
       return 'Anda tidak memiliki izin untuk operasi ini.';
     }
-    if (error.code == 'PGRST202' ||
-        error.code == 'PGRST205' ||
-        error.code == '42P01' ||
-        error.code == '42883') {
-      return 'Database FinBiz belum siap. Minta pengelola menerapkan migration Supabase.';
+    if (error.statusCode == 404) return 'Data yang diminta tidak ditemukan.';
+    if (error.statusCode == 409 || error.statusCode == 422) {
+      return error.message;
     }
-    return 'Operasi data gagal. Hubungi pengelola aplikasi jika masalah berlanjut.';
+    if (error.statusCode >= 500) {
+      return 'Server FinBiz mengalami kendala. Periksa konfigurasi API dan database MySQL.';
+    }
+    return error.message;
   }
-  if (error is FunctionException) {
-    return 'Layanan pengelolaan akun gagal. Pastikan fungsi server sudah dikonfigurasi.';
-  }
-  return 'Terjadi kesalahan jaringan. Periksa koneksi internet Anda.';
+  if (error is FormatException) return 'Respons server FinBiz tidak valid.';
+  return 'Terjadi kesalahan jaringan. Periksa koneksi dan coba lagi.';
 }

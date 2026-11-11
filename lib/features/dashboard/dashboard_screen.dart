@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:finbiz/core/providers/supabase_providers.dart';
+import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
 import 'package:finbiz/data/models/finance_models.dart';
@@ -840,7 +840,7 @@ class _DashboardError extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Ringkasan keuangan gagal dimuat. Periksa koneksi Supabase Anda.',
+              'Ringkasan keuangan gagal dimuat. Periksa koneksi API FinBiz Anda.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),

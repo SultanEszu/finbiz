@@ -9,12 +9,12 @@ import 'package:finbiz/app/app.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('FinBiz shows Supabase setup when not configured', (
+  testWidgets('FinBiz shows API setup when not configured', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const FinBizApp());
 
     await tester.pumpAndSettle();
-    expect(find.text('Supabase belum dikonfigurasi'), findsOneWidget);
+    expect(find.text('API FinBiz belum dikonfigurasi'), findsOneWidget);
   });
 }

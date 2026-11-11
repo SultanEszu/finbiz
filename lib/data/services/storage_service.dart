@@ -1,12 +1,10 @@
 import 'dart:typed_data';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
+import 'api_client.dart';
 
 class StorageService {
   StorageService(this._client);
 
-  static const bucketName = 'transaction-receipts';
   static const maxFileSize = 10 * 1024 * 1024;
   static const _allowedTypes = {
     'image/jpeg',
@@ -19,7 +17,7 @@ class StorageService {
     caseSensitive: false,
   );
 
-  final SupabaseClient _client;
+  final ApiClient _client;
 
   Future<String> uploadTransactionReceipt({
     required String businessId,
@@ -28,7 +26,7 @@ class StorageService {
     required String contentType,
     required Uint8List bytes,
   }) async {
-    if (_client.auth.currentUser == null) {
+    if (_client.currentUser == null) {
       throw StateError('Silakan masuk untuk mengunggah bukti transaksi.');
     }
     if (!_uuidPattern.hasMatch(businessId) ||
@@ -54,37 +52,14 @@ class StorageService {
             0,
             sanitizedName.length > 120 ? 120 : sanitizedName.length,
           );
-    final path = '$businessId/$transactionId/${const Uuid().v4()}-$safeName';
-
-    await _client.storage
-        .from(bucketName)
-        .uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(contentType: contentType, upsert: false),
-        );
-
-    try {
-      await _client.from('transaction_attachments').insert({
-        'business_id': businessId,
-        'transaction_id': transactionId,
-        'storage_path': path,
-        'original_name': safeName,
-        'content_type': contentType,
-        'byte_size': bytes.lengthInBytes,
-      });
-    } catch (error) {
-      try {
-        await _client.storage.from(bucketName).remove([path]);
-      } catch (_) {
-        throw StateError(
-          'Metadata bukti gagal disimpan dan file sementara tidak dapat dibersihkan. Hubungi pengelola dengan ID transaksi terkait.',
-        );
-      }
-      rethrow;
-    }
-
-    return path;
+    final response = await _client.upload(
+      '/receipts',
+      fields: {'business_id': businessId, 'transaction_id': transactionId},
+      fileField: 'file',
+      fileName: safeName,
+      bytes: bytes,
+    );
+    return response['storage_path'] as String;
   }
 
   Future<String> createSignedReceiptUrl({
@@ -92,7 +67,7 @@ class StorageService {
     required String transactionId,
     required String storagePath,
     int expiresInSeconds = 300,
-  }) {
+  }) async {
     _validateOwnedPath(businessId, transactionId, storagePath);
     if (expiresInSeconds < 30 || expiresInSeconds > 3600) {
       throw ArgumentError.value(
@@ -101,9 +76,16 @@ class StorageService {
         'Masa berlaku harus antara 30 dan 3600 detik.',
       );
     }
-    return _client.storage
-        .from(bucketName)
-        .createSignedUrl(storagePath, expiresInSeconds);
+    final response = await _client.get(
+      '/receipts/signed-url',
+      query: {
+        'business_id': businessId,
+        'transaction_id': transactionId,
+        'storage_path': storagePath,
+        'expires_in': '$expiresInSeconds',
+      },
+    );
+    return response['url'] as String;
   }
 
   Future<void> deleteReceipt({
@@ -112,11 +94,14 @@ class StorageService {
     required String storagePath,
   }) async {
     _validateOwnedPath(businessId, transactionId, storagePath);
-    await _client.storage.from(bucketName).remove([storagePath]);
-    await _client
-        .from('transaction_attachments')
-        .delete()
-        .eq('storage_path', storagePath);
+    await _client.delete(
+      '/receipts',
+      body: {
+        'business_id': businessId,
+        'transaction_id': transactionId,
+        'storage_path': storagePath,
+      },
+    );
   }
 
   void _validateOwnedPath(
@@ -124,14 +109,15 @@ class StorageService {
     String transactionId,
     String storagePath,
   ) {
-    if (_client.auth.currentUser == null) {
+    if (_client.currentUser == null) {
       throw StateError('Silakan masuk untuk mengakses bukti transaksi.');
     }
+    final parts = storagePath.split('/');
     if (!_uuidPattern.hasMatch(businessId) ||
         !_uuidPattern.hasMatch(transactionId) ||
-        storagePath.split('/').length != 3 ||
-        storagePath.split('/')[0] != businessId ||
-        storagePath.split('/')[1] != transactionId) {
+        parts.length != 3 ||
+        parts[0] != businessId ||
+        parts[1] != transactionId) {
       throw ArgumentError('Lokasi bukti transaksi tidak valid.');
     }
   }

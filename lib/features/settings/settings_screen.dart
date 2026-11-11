@@ -1,5 +1,5 @@
 import 'package:finbiz/core/theme/app_theme.dart';
-import 'package:finbiz/core/providers/supabase_providers.dart';
+import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
 import 'package:finbiz/data/services/auth_service.dart';
 import 'package:flutter/material.dart';
@@ -94,7 +94,7 @@ class SettingsScreen extends ConsumerWidget {
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       Text(
-                        'Data keuangan tersimpan di Supabase dan dibatasi oleh izin akun.',
+                        'Data keuangan tersimpan di database MySQL dan dibatasi oleh izin akun.',
                         style: TextStyle(color: Colors.black54),
                       ),
                     ],
@@ -127,7 +127,7 @@ class SettingsScreen extends ConsumerWidget {
 
   static Future<void> _signOut(BuildContext context, WidgetRef ref) async {
     try {
-      await ref.read(authServiceProvider)?.signOut();
+      await ref.read(authServiceProvider).signOut();
       if (context.mounted) context.go('/login');
     } catch (error) {
       if (context.mounted) {
@@ -172,7 +172,7 @@ class SettingsScreen extends ConsumerWidget {
     controller.dispose();
     if (name == null) return;
     try {
-      await ref.read(authServiceProvider)?.updateFullName(name);
+      await ref.read(authServiceProvider).updateFullName(name);
       ref.invalidate(currentProfileProvider);
     } catch (error) {
       if (context.mounted) {

@@ -1,4 +1,4 @@
-import 'package:finbiz/core/providers/supabase_providers.dart';
+import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/data/models/user_profile.dart';
 import 'package:finbiz/data/services/auth_service.dart';
@@ -11,7 +11,7 @@ class UserManagementScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final usersAsync = ref.watch(managedProfilesProvider);
-    final currentUserId = ref.read(authServiceProvider)?.currentUser?.id;
+    final currentUserId = ref.read(authServiceProvider).currentUser?.id;
     final currentProfile = ref
         .watch(currentProfileProvider)
         .when(
@@ -127,7 +127,7 @@ class UserManagementScreen extends ConsumerWidget {
     if (data == null) return;
     try {
       await ref
-          .read(authServiceProvider)!
+          .read(authServiceProvider)
           .createManagedUser(
             email: data.email,
             password: data.password,
@@ -154,7 +154,7 @@ class UserManagementScreen extends ConsumerWidget {
     UserRole role,
   ) async {
     try {
-      await ref.read(authServiceProvider)!.setUserRole(user.id, role);
+      await ref.read(authServiceProvider).setUserRole(user.id, role);
       ref.invalidate(managedProfilesProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -195,7 +195,7 @@ class UserManagementScreen extends ConsumerWidget {
     );
     if (confirmed != true) return;
     try {
-      await ref.read(authServiceProvider)!.deleteManagedUser(user.id);
+      await ref.read(authServiceProvider).deleteManagedUser(user.id);
       ref.invalidate(managedProfilesProvider);
     } catch (error) {
       if (context.mounted) {
