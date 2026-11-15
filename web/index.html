@@ -18,21 +18,116 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="FinBiz — Kelola Keuangan Bisnis Lebih Mudah.">
+  <meta name="theme-color" content="#F5F7FA">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="finbiz">
+  <meta name="apple-mobile-web-app-title" content="FinBiz">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>finbiz</title>
+  <title>FinBiz</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #F5F7FA;
+    }
+
+    #finbiz-startup {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 14px;
+      color: #1E293B;
+      font-family: Inter, Poppins, Arial, sans-serif;
+      text-align: center;
+      transition: opacity 180ms ease;
+    }
+
+    #finbiz-startup.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .finbiz-startup-logo {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      place-items: center;
+      border-radius: 18px;
+      background: #163A5F;
+      color: #FFFFFF;
+      font-size: 30px;
+      font-weight: 800;
+    }
+
+    .finbiz-startup-name {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 750;
+    }
+
+    .finbiz-startup-tagline {
+      margin: 0;
+      color: #64748B;
+      font-size: 14px;
+    }
+
+    .finbiz-startup-progress {
+      width: 24px;
+      height: 24px;
+      margin-top: 6px;
+      border: 3px solid #E2E8F0;
+      border-top-color: #16A36A;
+      border-radius: 50%;
+      animation: finbiz-spin 800ms linear infinite;
+    }
+
+    @keyframes finbiz-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #finbiz-startup {
+        transition: none;
+      }
+
+      .finbiz-startup-progress {
+        animation-duration: 1800ms;
+      }
+    }
+  </style>
 </head>
 <body>
+  <main id="finbiz-startup" role="status" aria-live="polite">
+    <div class="finbiz-startup-logo" aria-hidden="true">F</div>
+    <p class="finbiz-startup-name">FinBiz</p>
+    <p class="finbiz-startup-tagline">Kelola Keuangan Bisnis Lebih Mudah.</p>
+    <div class="finbiz-startup-progress" aria-hidden="true"></div>
+  </main>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var startup = document.getElementById('finbiz-startup');
+      if (startup) {
+        startup.classList.add('is-hidden');
+        window.setTimeout(function () {
+          startup.remove();
+        }, 200);
+      }
+    });
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
