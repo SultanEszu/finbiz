@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:finbiz/core/constants/api_config.dart';
+
 import '../models/app_user.dart';
 
 class ApiException implements Exception {
@@ -21,7 +23,7 @@ class ApiClient {
 
   static final instance = ApiClient._();
   static const _tokenKey = 'finbiz_api_token';
-  static const _baseUrl = String.fromEnvironment('API_BASE_URL');
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final http.Client _http = http.Client();

@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('id_ID');
+  await ApiConfig.load();
+
   if (ApiConfig.isConfigured) {
     try {
       await ApiClient.instance.initialize();
