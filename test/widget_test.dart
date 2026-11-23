@@ -6,17 +6,12 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:finbiz/app/app.dart';
-import 'package:finbiz/core/constants/api_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('FinBiz loads with the default local backend URL', (
-    WidgetTester tester,
-  ) async {
-    await ApiConfig.load();
+  testWidgets('FinBiz loads in standalone mode', (WidgetTester tester) async {
     await tester.pumpWidget(const FinBizApp());
-
     await tester.pumpAndSettle();
-    expect(find.text('API FinBiz belum dikonfigurasi'), findsNothing);
+    expect(find.text('FinBiz'), findsWidgets);
   });
 }

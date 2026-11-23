@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/providers/api_providers.dart';
 import '../services/api_client.dart';
 import '../models/finance_models.dart';
 
@@ -40,17 +39,14 @@ class FinanceState {
       calculatedBalance ??
       transactions.fold<double>(
         0,
-        (total, item) => total + _signedAmount(item),
+        (total, item) => item.type == TransactionType.income ? total + item.amount : total - item.amount,
       );
 
   double monthlyTotal(TransactionType type) {
     final now = DateTime.now();
     return transactions
         .where(
-          (item) =>
-              item.type == type &&
-              item.date.year == now.year &&
-              item.date.month == now.month,
+          (item) => item.type == type && item.date.year == now.year && item.date.month == now.month,
         )
         .fold<double>(0, (sum, item) => sum + item.amount);
   }
@@ -83,10 +79,6 @@ class FinanceState {
   double get payableTotal => debts
       .where((item) => item.type == DebtType.payable)
       .fold<double>(0, (sum, item) => sum + item.amount);
-
-  static double _signedAmount(FinanceTransaction item) {
-    return item.type == TransactionType.income ? item.amount : -item.amount;
-  }
 }
 
 class FinanceRepository extends AsyncNotifier<FinanceState> {
@@ -96,24 +88,15 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
   double get monthlyIncome => _current.monthlyTotal(TransactionType.income);
   double get monthlyExpense => _current.monthlyTotal(TransactionType.expense);
   double get totalBalance => _current.totalBalance;
-  List<({String category, double amount})> get categorySummary =>
-      _current.categorySummary;
-  List<FinanceTransaction> get recentTransactions =>
-      _current.recentTransactions;
+  List<({String category, double amount})> get categorySummary => _current.categorySummary;
+  List<FinanceTransaction> get recentTransactions => _current.recentTransactions;
   double get receivableTotal => _current.receivableTotal;
   double get payableTotal => _current.payableTotal;
 
   @override
-  FutureOr<FinanceState> build() {
-    ref.watch(authStateProvider);
-    return _loadState();
-  }
+  FutureOr<FinanceState> build() => _loadState();
 
   Future<FinanceState> _loadState() async {
-    if (_client.currentUser == null) {
-      throw StateError('Sesi pengguna tidak tersedia.');
-    }
-
     final response = await _client.get('/finance');
     final categoryRows = _rows(response, 'categories');
     final transactionRows = _rows(response, 'transactions');
@@ -128,9 +111,7 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
       transactions: transactionRows.map(_transactionFromRow).toList(),
       debts: debtRows.map(_debtFromRow).toList(),
       budgets: budgetRows.map(FinanceBudget.fromJson).toList(),
-      notifications: notificationRows
-          .map(FinanceNotification.fromJson)
-          .toList(),
+      notifications: notificationRows.map(FinanceNotification.fromJson).toList(),
       savings: savingsRows.map(SavingsTarget.fromJson).toList(),
       calculatedBalance: balanceRows.fold<double>(
         0,
@@ -139,19 +120,26 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     );
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh() async => _reload();
+
+  Future<String> exportBackupJson() => _client.exportBackupJson();
+
+  Future<void> restoreBackupJson(String jsonText) async {
+    await _client.restoreBackupJson(jsonText);
+    await _reload();
+  }
+
+  Future<void> cancelDebt(String debtId) async {
+    await _client.delete('/debts/$debtId');
     await _reload();
   }
 
   Future<void> addTransaction(FinanceTransaction transaction) async {
-    _requireUserId();
     await _client.post(
       '/transactions',
       body: {
         'title': transaction.title,
-        'category_id': transaction.categoryId.isEmpty
-            ? null
-            : transaction.categoryId,
+        'category_id': transaction.categoryId.isEmpty ? null : transaction.categoryId,
         'amount': transaction.amount,
         'transaction_date': transaction.date.toIso8601String().substring(0, 10),
         'transaction_type': transaction.type.name,
@@ -166,9 +154,7 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
       '/transactions/${transaction.id}',
       body: {
         'title': transaction.title,
-        'category_id': transaction.categoryId.isEmpty
-            ? null
-            : transaction.categoryId,
+        'category_id': transaction.categoryId.isEmpty ? null : transaction.categoryId,
         'amount': transaction.amount,
         'transaction_date': transaction.date.toIso8601String().substring(0, 10),
         'transaction_type': transaction.type.name,
@@ -184,9 +170,21 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
   }
 
   Future<void> addCategory(FinanceCategory category) async {
-    _requireUserId();
     await _client.post(
       '/categories',
+      body: {
+        'name': category.name,
+        'type': category.isExpense ? 'expense' : 'income',
+        'icon_name': category.iconName,
+        'color_value': category.colorValue,
+      },
+    );
+    await _reload();
+  }
+
+  Future<void> updateCategory(FinanceCategory category) async {
+    await _client.put(
+      '/categories/${category.id}',
       body: {
         'name': category.name,
         'type': category.isExpense ? 'expense' : 'income',
@@ -203,7 +201,6 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
   }
 
   Future<void> addDebt(DebtEntry debt) async {
-    _requireUserId();
     await _client.post(
       '/debts',
       body: {
@@ -223,7 +220,6 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     required double targetAmount,
     DateTime? targetDate,
   }) async {
-    _requireUserId();
     await _client.post(
       '/savings',
       body: {
@@ -242,10 +238,6 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     if (amount <= 0 || target.currentAmount + amount > target.targetAmount) {
       throw ArgumentError('Jumlah setoran tidak valid.');
     }
-    await _client.post(
-      '/savings/${target.id}/contributions',
-      body: {'amount': amount},
-    );
     await _reload();
   }
 
@@ -260,7 +252,6 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    _requireUserId();
     await _client.post(
       '/budgets',
       body: {
@@ -278,14 +269,8 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     await _reload();
   }
 
-  String _requireUserId() {
-    final userId = _client.currentUser?.id;
-    if (userId == null) throw StateError('Silakan masuk kembali ke akun Anda.');
-    return userId;
-  }
-
   List<Map<String, dynamic>> _rows(Map<String, dynamic> response, String key) {
-    final rows = response[key] as List<dynamic>;
+    final rows = response[key] as List<dynamic>? ?? const [];
     return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
   }
 
@@ -299,60 +284,42 @@ class FinanceRepository extends AsyncNotifier<FinanceState> {
     }
   }
 
-  FinanceCategory _categoryFromRow(Map<String, dynamic> row) {
-    return FinanceCategory(
-      id: row['id'] as String,
-      name: row['name'] as String,
-      iconName: row['icon_name'] as String? ?? 'category',
-      colorValue: (row['color_value'] as num?)?.toInt() ?? 0xFF94A3B8,
-      isExpense: row['type'] == 'expense',
-    );
-  }
-
-  FinanceTransaction _transactionFromRow(Map<String, dynamic> row) {
-    return FinanceTransaction(
-      id: row['id'] as String,
-      title: row['title'] as String? ?? '',
-      categoryId: row['category_id'] as String? ?? '',
-      amount: (row['amount'] as num).toDouble(),
-      date: DateTime.parse(row['transaction_date'] as String),
-      type: transactionTypeFromString(row['transaction_type'] as String),
-      description: row['description'] as String? ?? '',
-    );
-  }
-
-  DebtEntry _debtFromRow(Map<String, dynamic> row) {
-    return DebtEntry(
-      id: row['id'] as String,
-      name: row['name'] as String,
-      contact: row['contact'] as String? ?? '',
-      amount: (row['amount'] as num).toDouble(),
-      dueDate: DateTime.parse(row['due_date'] as String),
-      type: DebtType.values.firstWhere(
-        (type) => type.name == row['type'],
-        orElse: () => DebtType.payable,
-      ),
-      description: row['description'] as String? ?? '',
-    );
-  }
+  FinanceCategory _categoryFromRow(Map<String, dynamic> row) => FinanceCategory(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        iconName: row['icon_name'] as String? ?? 'category',
+        colorValue: (row['color_value'] as num?)?.toInt() ?? 0xFF94A3B8,
+        isExpense: row['type'] == 'expense',
+      );
+  FinanceTransaction _transactionFromRow(Map<String, dynamic> row) => FinanceTransaction(
+        id: row['id'] as String,
+        title: row['title'] as String? ?? '',
+        categoryId: row['category_id'] as String? ?? '',
+        amount: (row['amount'] as num).toDouble(),
+        date: DateTime.parse(row['transaction_date'] as String),
+        type: transactionTypeFromString(row['transaction_type'] as String),
+        description: row['description'] as String? ?? '',
+      );
+  DebtEntry _debtFromRow(Map<String, dynamic> row) => DebtEntry(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        contact: row['contact'] as String? ?? '',
+        amount: (row['amount'] as num).toDouble(),
+        dueDate: DateTime.parse(row['due_date'] as String),
+        type: DebtType.values.firstWhere(
+          (type) => type.name == row['type'],
+          orElse: () => DebtType.payable,
+        ),
+        description: row['description'] as String? ?? '',
+      );
 }
 
-final financeRepositoryProvider =
-    AsyncNotifierProvider<FinanceRepository, FinanceState>(
-      FinanceRepository.new,
-    );
+final financeRepositoryProvider = AsyncNotifierProvider<FinanceRepository, FinanceState>(FinanceRepository.new);
 
 String financeErrorMessage(Object error) {
   if (error is ApiException) {
-    if (error.statusCode == 403) {
-      return 'Anda tidak memiliki izin untuk operasi ini.';
-    }
-    if (error.statusCode == 422) {
-      return 'Data tidak valid: ${error.message}';
-    }
-    if (error.statusCode >= 500) {
-      return 'Server FinBiz mengalami kendala. Periksa koneksi dan coba lagi.';
-    }
+    if (error.statusCode == 403) return 'Anda tidak memiliki izin untuk operasi ini.';
+    if (error.statusCode == 422) return 'Data tidak valid: ${error.message}';
   }
   return 'Terjadi kesalahan saat menyimpan data. Coba lagi.';
 }

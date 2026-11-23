@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:finbiz/core/constants/api_config.dart';
 import 'package:finbiz/features/auth/auth_screen.dart';
 import 'package:finbiz/features/auth/change_password_screen.dart';
 import 'package:finbiz/features/auth/setup_screen.dart';
@@ -22,200 +21,62 @@ import 'package:finbiz/core/widgets/finbiz_logo.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/models/user_profile.dart';
+import 'package:finbiz/data/models/app_user.dart';
 
-class _AuthRefreshListenable extends ChangeNotifier {
-  _AuthRefreshListenable(Stream<dynamic> authChanges) {
-    _subscription = authChanges.listen((_) => notifyListeners());
+String _profileFailureReason(Object error) => 'database';
+
+class _AuthRouterRefresh extends ChangeNotifier {
+  _AuthRouterRefresh(Stream<AppUser?> stream) {
+    _subscription = stream.listen((_) => notifyListeners());
   }
 
-  StreamSubscription<dynamic>? _subscription;
+  late final StreamSubscription<AppUser?> _subscription;
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _subscription.cancel();
     super.dispose();
   }
 }
 
-String _profileFailureReason(Object error) {
-  if (error is ApiException) {
-    final kind = profileFailureFromApi(error).kind;
-    return switch (kind) {
-      ProfileFailureKind.databaseNotReady => 'database',
-      ProfileFailureKind.profilePermissionDenied => 'permission',
-      ProfileFailureKind.creatorProvisioningRequired => 'creator-provisioning',
-      ProfileFailureKind.missingProfile => 'missing-profile',
-      ProfileFailureKind.invalidRole => 'invalid-role',
-      ProfileFailureKind.profileUnavailable => 'database',
-    };
-  }
-  return 'database';
-}
-
 GoRouter createAppRouter() {
-  final authRefresh = _AuthRefreshListenable(
-    AuthService(ApiClient.instance).authStateChanges,
-  );
-
+  final authRefresh = _AuthRouterRefresh(ApiClient.instance.authStateChanges);
   return GoRouter(
-    initialLocation: '/splash',
+    initialLocation: '/dashboard',
     refreshListenable: authRefresh,
-    redirect: (context, state) async {
-      final location = state.matchedLocation;
-      if (ApiConfig.initializationFailure != null || !ApiConfig.isConfigured) {
-        return location == '/setup' ? null : '/setup';
+    redirect: (context, state) {
+      final loggedIn = ApiClient.instance.currentUser != null;
+      final loggingIn = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register' ||
+          state.matchedLocation == '/forgot-password';
+      if (!loggedIn && !loggingIn && state.matchedLocation != '/setup') {
+        return '/login';
       }
-      if (location == '/setup') {
-        return '/splash';
-      }
-
-      final session = ApiClient.instance.currentUser;
-      const publicLocations = {
-        '/login',
-        '/register',
-        '/forgot-password',
-        '/reset-password',
-      };
-      if (session == null) {
-        return publicLocations.contains(location) ? null : '/login';
-      }
-      Map<String, dynamic>? profile;
-      try {
-        final currentProfile = await AuthService(ApiClient.instance)
-            .getProfile();
-        profile = currentProfile == null
-            ? null
-            : {
-                'role': currentProfile.role.name,
-                'must_change_password': currentProfile.mustChangePassword,
-              };
-        if (profile == null) {
-          return location == '/access-error'
-              ? null
-              : '/access-error?reason=missing-profile';
-        }
-      } catch (error) {
-        final reason = _profileFailureReason(error);
-        return location == '/access-error'
-            ? null
-            : '/access-error?reason=$reason';
-      }
-
-      final roleName = profile['role'] as String?;
-      if (roleName == null ||
-          !UserRole.values.any((role) => role.name == roleName)) {
-        return location == '/access-error'
-            ? null
-            : '/access-error?reason=invalid-role';
-      }
-
-      final mustChangePassword =
-          profile['must_change_password'] as bool? ?? false;
-      if (mustChangePassword && location != '/change-password') {
-        return '/change-password';
-      }
-      if (publicLocations.contains(location) ||
-          location == '/splash' ||
-          location == '/access-error') {
-        return '/dashboard';
-      }
-      if (location == '/admin/users' || location == '/creator/system') {
-        final role = userRoleFromString(roleName);
-        if (location == '/creator/system' && role != UserRole.creator) {
-          return '/dashboard';
-        }
-        if (location == '/admin/users' &&
-            role != UserRole.admin &&
-            role != UserRole.creator) {
-          return '/dashboard';
-        }
-      }
+      if (loggedIn && loggingIn) return '/dashboard';
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/splash',
-        builder: (context, state) => const SplashScreen(),
-      ),
+      GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
       GoRoute(path: '/setup', builder: (context, state) => const SetupScreen()),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) =>
-            const AuthScreen(mode: AuthScreenMode.login),
-      ),
-      GoRoute(
-        path: '/register',
-        builder: (context, state) =>
-            const AuthScreen(mode: AuthScreenMode.register),
-      ),
-      GoRoute(
-        path: '/forgot-password',
-        builder: (context, state) =>
-            const AuthScreen(mode: AuthScreenMode.forgotPassword),
-      ),
-      GoRoute(
-        path: '/change-password',
-        builder: (context, state) => const ChangePasswordScreen(),
-      ),
-      GoRoute(
-        path: '/reset-password',
-        builder: (context, state) => ChangePasswordScreen(
-          email: state.uri.queryParameters['email'],
-          token: state.uri.queryParameters['token'],
-        ),
-      ),
-      GoRoute(
-        path: '/access-error',
-        builder: (context, state) =>
-            _AccessErrorScreen(reason: state.uri.queryParameters['reason']),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const AuthScreen(mode: AuthScreenMode.login)),
+      GoRoute(path: '/register', builder: (context, state) => const AuthScreen(mode: AuthScreenMode.register)),
+      GoRoute(path: '/forgot-password', builder: (context, state) => const AuthScreen(mode: AuthScreenMode.forgotPassword)),
+      GoRoute(path: '/change-password', builder: (context, state) => const ChangePasswordScreen()),
+      GoRoute(path: '/reset-password', builder: (context, state) => ChangePasswordScreen(email: state.uri.queryParameters['email'], token: state.uri.queryParameters['token'])),
+      GoRoute(path: '/access-error', builder: (context, state) => _AccessErrorScreen(reason: state.uri.queryParameters['reason'])),
       ShellRoute(
         builder: (context, state, child) => HomeShell(child: child),
         routes: [
-          GoRoute(
-            path: '/dashboard',
-            builder: (context, state) => const DashboardScreen(),
-          ),
-          GoRoute(
-            path: '/transactions',
-            builder: (context, state) => const TransactionsScreen(),
-          ),
-          GoRoute(
-            path: '/categories',
-            builder: (context, state) => const CategoriesScreen(),
-          ),
-          GoRoute(
-            path: '/debts',
-            builder: (context, state) => const DebtsScreen(),
-          ),
-          GoRoute(
-            path: '/reports',
-            builder: (context, state) => const ReportsScreen(),
-          ),
-          GoRoute(
-            path: '/savings',
-            builder: (context, state) => const SavingsScreen(),
-          ),
-          GoRoute(
-            path: '/budgets',
-            builder: (context, state) => const BudgetsScreen(),
-          ),
-          GoRoute(
-            path: '/settings',
-            builder: (context, state) => const SettingsScreen(),
-          ),
-          GoRoute(
-            path: '/admin/users',
-            builder: (context, state) => const UserManagementScreen(),
-          ),
-          GoRoute(
-            path: '/creator/system',
-            builder: (context, state) => const _RolePlaceholderScreen(
-              title: 'Pengaturan sistem',
-              description: 'Konfigurasi aplikasi hanya tersedia untuk Creator.',
-            ),
-          ),
+          GoRoute(path: '/dashboard', builder: (context, state) => const DashboardScreen()),
+          GoRoute(path: '/transactions', builder: (context, state) => const TransactionsScreen()),
+          GoRoute(path: '/categories', builder: (context, state) => const CategoriesScreen()),
+          GoRoute(path: '/debts', builder: (context, state) => const DebtsScreen()),
+          GoRoute(path: '/reports', builder: (context, state) => const ReportsScreen()),
+          GoRoute(path: '/savings', builder: (context, state) => const SavingsScreen()),
+          GoRoute(path: '/budgets', builder: (context, state) => const BudgetsScreen()),
+          GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
+          GoRoute(path: '/admin/users', builder: (context, state) => const UserManagementScreen()),
+          GoRoute(path: '/creator/system', builder: (context, state) => const _RolePlaceholderScreen(title: 'Pengaturan sistem', description: 'Konfigurasi aplikasi lokal FinBiz.')),
         ],
       ),
     ],
@@ -279,13 +140,13 @@ class _AccessErrorScreen extends StatelessWidget {
       ),
       'database' => (
         'Profil belum dapat dimuat',
-        'Login berhasil, tetapi API FinBiz tidak dapat membaca profil dari database MySQL. Pengelola perlu memeriksa migration dan konfigurasi API.',
+        'Login berhasil, tetapi profil lokal belum dapat dimuat. Periksa penyimpanan FinBiz pada perangkat.',
         Icons.storage_rounded,
         AppTheme.error,
       ),
       _ => (
         'Profil belum dapat diverifikasi',
-        'Sesi login aktif, tetapi profil belum dapat dibaca. Periksa koneksi API dan database MySQL.',
+        'Sesi login aktif, tetapi profil lokal belum dapat dibaca. Periksa penyimpanan FinBiz pada perangkat.',
         Icons.cloud_off_rounded,
         AppTheme.error,
       ),

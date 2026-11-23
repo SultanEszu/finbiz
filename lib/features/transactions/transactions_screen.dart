@@ -412,7 +412,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         : matchingCategories.first.id;
 
     final transaction = FinanceTransaction(
-      id: const Uuid().v4(),
+      id: widget.initialTransaction?.id ?? const Uuid().v4(),
       title: _titleController.text.trim(),
       categoryId: categoryId,
       amount: amount,
@@ -464,7 +464,7 @@ class _ErrorState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Transaksi gagal dimuat. Periksa koneksi lalu coba lagi.',
+              'Transaksi gagal dimuat. Periksa data lalu coba lagi.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),

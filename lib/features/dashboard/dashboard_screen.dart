@@ -216,6 +216,26 @@ class _DashboardContentState extends State<_DashboardContent> {
           Row(
             children: [
               Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push('/categories'),
+                  icon: const Icon(Icons.category_outlined),
+                  label: const Text('Kategori'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push('/debts'),
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: const Text('Hutang/Piutang'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
                 child: FilledButton.icon(
                   onPressed: () =>
                       _openAddTransaction(context, TransactionType.income),
@@ -254,6 +274,27 @@ class _DashboardContentState extends State<_DashboardContent> {
           _RecentTransactionsCard(
             transactions: recent,
             categories: widget.state.categories,
+          ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+            child: Row(
+              children: [
+                const Icon(Icons.trending_up_rounded, color: AppTheme.primaryBlue),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text('Laba Bersih', style: TextStyle(fontWeight: FontWeight.w700)),
+                      Text('Pemasukan dikurangi pengeluaran periode ini.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Text(_currency(income - expense), style: const TextStyle(fontWeight: FontWeight.w800)),
+              ],
+            ),
           ),
         ],
       ),
@@ -391,6 +432,17 @@ class _ChartCard extends StatelessWidget {
                   ),
                   topTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final label = rodIndex == 0 ? 'Pemasukan' : 'Pengeluaran';
+                      return BarTooltipItem(
+                        '$label\n${_currency(rod.toY)}',
+                        const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -740,7 +792,7 @@ class BalanceCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Saldo tersedia',
+                  'Saldo Kas',
                   style: TextStyle(color: Colors.white70),
                 ),
                 const SizedBox(height: 8),
@@ -754,6 +806,12 @@ class BalanceCard extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (balance < 0) ...[
+                  const SizedBox(height: 6),
+                  const Text('Peringatan: saldo kas negatif', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                ],
+                const SizedBox(height: 6),
+                const Text('Uang tunai yang tersedia setelah seluruh transaksi.', style: TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
           ),
@@ -840,7 +898,7 @@ class _DashboardError extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Ringkasan keuangan gagal dimuat. Periksa koneksi API FinBiz Anda.',
+              'Ringkasan keuangan gagal dimuat. Periksa data lokal FinBiz lalu coba lagi.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),

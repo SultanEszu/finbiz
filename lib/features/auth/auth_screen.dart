@@ -168,9 +168,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Kata sandi wajib diisi.';
                           }
-                          if (widget.mode == AuthScreenMode.register &&
-                              value.length < 8) {
-                            return 'Kata sandi minimal 8 karakter.';
+                          if (widget.mode == AuthScreenMode.register) {
+                            if (value.length < 8) {
+                              return 'Kata sandi minimal 8 karakter.';
+                            }
+                            if (!RegExp(r'[A-Z]').hasMatch(value) ||
+                                !RegExp(r'[a-z]').hasMatch(value) ||
+                                !RegExp(r'[0-9]').hasMatch(value)) {
+                              return 'Gunakan huruf besar, huruf kecil, dan angka.';
+                            }
                           }
                           return null;
                         },

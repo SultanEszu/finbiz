@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
+import 'package:finbiz/data/repositories/finance_repository.dart';
 import 'package:finbiz/data/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -83,7 +88,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
             child: const Row(
               children: [
-                Icon(Icons.cloud_done_outlined, color: AppTheme.primaryBlue),
+                Icon(Icons.storage_rounded, color: AppTheme.primaryBlue),
                 SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -94,7 +99,7 @@ class SettingsScreen extends ConsumerWidget {
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                       Text(
-                        'Data keuangan tersimpan di database MySQL dan dibatasi oleh izin akun.',
+                        'Data keuangan tersimpan lokal dalam aplikasi pada sesi ini.',
                         style: TextStyle(color: Colors.black54),
                       ),
                     ],
@@ -113,6 +118,18 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Mata uang',
             subtitle: 'IDR (Rupiah)',
             icon: Icons.attach_money_outlined,
+          ),
+          _SettingTile(
+            title: 'Cadangkan data JSON',
+            subtitle: 'Simpan cadangan seluruh data keuangan lokal',
+            icon: Icons.backup_outlined,
+            onTap: () => _backupData(context, ref),
+          ),
+          _SettingTile(
+            title: 'Pulihkan cadangan JSON',
+            subtitle: 'Ganti data saat ini dari berkas cadangan',
+            icon: Icons.restore_outlined,
+            onTap: () => _restoreData(context, ref),
           ),
           _SettingTile(
             title: 'Keluar',
@@ -179,6 +196,47 @@ class SettingsScreen extends ConsumerWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(authErrorMessage(error))));
       }
+    }
+  }
+
+  static Future<void> _backupData(BuildContext context, WidgetRef ref) async {
+    try {
+      final jsonText = await ref.read(financeRepositoryProvider.notifier).exportBackupJson();
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: 'Simpan cadangan FinBiz',
+        fileName: 'finbiz_backup_${DateTime.now().toIso8601String().substring(0, 10)}.json',
+        bytes: Uint8List.fromList(utf8.encode(jsonText)),
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result == null ? 'Penyimpanan dibatalkan.' : 'Cadangan berhasil disimpan.')));
+      }
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(financeErrorMessage(error))));
+    }
+  }
+
+  static Future<void> _restoreData(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pulihkan cadangan?'),
+        content: const Text('Data saat ini akan diganti dengan isi berkas cadangan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Pulihkan')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['json'], withData: true);
+      if (result == null || result.files.single.bytes == null) return;
+      await ref.read(financeRepositoryProvider.notifier).restoreBackupJson(utf8.decode(result.files.single.bytes!));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cadangan berhasil dipulihkan.')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(financeErrorMessage(error))));
     }
   }
 }

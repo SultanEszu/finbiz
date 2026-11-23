@@ -23,10 +23,21 @@ final authStateProvider = StreamProvider<AppUser?>((ref) {
 
 final currentProfileProvider = FutureProvider<UserProfile?>((ref) async {
   final user = ref.watch(authStateProvider).value;
-  if (user == null) return null;
+  if (user == null) {
+    return const UserProfile(
+      id: 'local-user',
+      email: 'pengguna@finbiz.local',
+      fullName: 'Pengguna FinBiz',
+      role: UserRole.creator,
+    );
+  }
   final service = ref.watch(authServiceProvider);
-  if (service.currentUser == null) return null;
   return service.getProfile();
+});
+
+final businessIdProvider = Provider<String?>((ref) {
+  final profile = ref.watch(currentProfileProvider).value;
+  return profile?.id;
 });
 
 final managedProfilesProvider = FutureProvider<List<UserProfile>>((ref) async {

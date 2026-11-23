@@ -134,6 +134,11 @@ class DebtsScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
+                            IconButton(
+                              tooltip: 'Batalkan catatan',
+                              icon: const Icon(Icons.cancel_outlined, color: AppTheme.error),
+                              onPressed: () => _cancelDebt(context, ref, debt),
+                            ),
                           ],
                         ),
                       ],
@@ -157,6 +162,27 @@ class DebtsScreen extends ConsumerWidget {
       ),
       builder: (sheetContext) => _AddDebtSheet(ref: ref),
     );
+  }
+
+  Future<void> _cancelDebt(BuildContext context, WidgetRef ref, DebtEntry debt) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Batalkan catatan?'),
+        content: Text('Catatan ${debt.name} akan dihapus. Pembatalan tidak dapat dibalik.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Tidak')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Batalkan')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(financeRepositoryProvider.notifier).cancelDebt(debt.id);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Catatan hutang/piutang dibatalkan.')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(financeErrorMessage(error))));
+    }
   }
 }
 

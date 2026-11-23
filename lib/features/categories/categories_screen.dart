@@ -108,6 +108,11 @@ class CategoriesScreen extends ConsumerWidget {
                             ),
                           ),
                           IconButton(
+                            tooltip: 'Ubah kategori',
+                            onPressed: () => _showEditCategorySheet(context, ref, category),
+                            icon: const Icon(Icons.edit_outlined),
+                          ),
+                          IconButton(
                             tooltip: 'Hapus kategori',
                             onPressed: () =>
                                 _deleteCategory(context, ref, category),
@@ -163,6 +168,15 @@ class CategoriesScreen extends ConsumerWidget {
     }
   }
 
+  void _showEditCategorySheet(BuildContext context, WidgetRef ref, FinanceCategory category) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _AddCategorySheet(ref: ref, initialCategory: category),
+    );
+  }
+
   void _showAddCategorySheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet<void>(
       context: context,
@@ -176,9 +190,10 @@ class CategoriesScreen extends ConsumerWidget {
 }
 
 class _AddCategorySheet extends ConsumerStatefulWidget {
-  const _AddCategorySheet({required this.ref});
+  const _AddCategorySheet({required this.ref, this.initialCategory});
 
   final WidgetRef ref;
+  final FinanceCategory? initialCategory;
 
   @override
   ConsumerState<_AddCategorySheet> createState() => _AddCategorySheetState();
@@ -188,6 +203,15 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
   final nameController = TextEditingController();
   bool isExpense = true;
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialCategory != null) {
+      nameController.text = widget.initialCategory!.name;
+      isExpense = widget.initialCategory!.isExpense;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -204,8 +228,10 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
         children: [
           Row(
             children: [
-              const Text(
-                'Tambah kategori',
+              Text(
+                widget.initialCategory == null
+                    ? 'Tambah kategori'
+                    : 'Ubah kategori',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
               ),
               const Spacer(),
@@ -222,7 +248,7 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<bool>(
-            initialValue: isExpense,
+            value: isExpense,
             decoration: const InputDecoration(labelText: 'Jenis'),
             items: const [
               DropdownMenuItem(value: true, child: Text('Pengeluaran')),
@@ -259,7 +285,7 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
     }
 
     final category = FinanceCategory(
-      id: const Uuid().v4(),
+      id: widget.initialCategory?.id ?? const Uuid().v4(),
       name: name,
       iconName: isExpense ? 'shopping_cart' : 'trending_up',
       colorValue: isExpense
@@ -270,12 +296,21 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
 
     setState(() => _isSaving = true);
     try {
-      await ref.read(financeRepositoryProvider.notifier).addCategory(category);
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kategori berhasil disimpan.')),
-      );
+      if (widget.initialCategory == null) {
+        await ref.read(financeRepositoryProvider.notifier).addCategory(category);
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kategori berhasil disimpan.')),
+        );
+      } else {
+        await ref.read(financeRepositoryProvider.notifier).updateCategory(category);
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kategori berhasil diubah.')),
+        );
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)

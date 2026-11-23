@@ -143,13 +143,13 @@ ProfileUnavailableException profileFailureFromApi(ApiException error) {
 String authErrorMessage(Object error) {
   if (error is ProfileUnavailableException) {
     return switch (error.kind) {
-      ProfileFailureKind.databaseNotReady => 'Layanan FinBiz belum siap. Minta pengelola memeriksa konfigurasi API dan database MySQL.',
+      ProfileFailureKind.databaseNotReady => 'Data lokal FinBiz belum dapat dimuat. Periksa penyimpanan perangkat.',
       ProfileFailureKind.missingProfile => 'Autentikasi berhasil, tetapi profil pengguna belum tersedia. Minta pengelola memeriksa provisioning profil.',
       ProfileFailureKind.invalidRole => 'Profil ditemukan, tetapi role tidak valid. Minta Creator memeriksa role akun melalui proses administrasi.',
       ProfileFailureKind.profilePermissionDenied => 'Autentikasi berhasil, tetapi akses ke profil ditolak. Minta pengelola memeriksa izin akun.',
       ProfileFailureKind.creatorProvisioningRequired =>
         'Akun Creator belum diprovisikan oleh administrator.',
-      ProfileFailureKind.profileUnavailable => 'Sesi login aktif, tetapi profil tidak dapat diverifikasi. Periksa server dan database.',
+      ProfileFailureKind.profileUnavailable => 'Sesi login aktif, tetapi profil tidak dapat diverifikasi. Periksa penyimpanan lokal.',
     };
   }
   if (error is ApiException) {
@@ -162,10 +162,10 @@ String authErrorMessage(Object error) {
       return error.message;
     }
     if (error.statusCode >= 500) {
-      return 'Server FinBiz mengalami kendala. Periksa konfigurasi API dan database MySQL.';
+      return 'Data FinBiz mengalami kendala. Periksa penyimpanan lokal.';
     }
     return error.message;
   }
-  if (error is FormatException) return 'Respons server FinBiz tidak valid.';
-  return 'Terjadi kesalahan jaringan. Periksa koneksi dan coba lagi.';
+  if (error is FormatException) return 'Data FinBiz tidak valid atau rusak.';
+  return 'Terjadi kesalahan pada penyimpanan lokal. Periksa data dan coba lagi.';
 }
