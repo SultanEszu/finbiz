@@ -7,9 +7,8 @@ import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
 import 'package:finbiz/data/repositories/finance_repository.dart';
 import 'package:finbiz/data/services/auth_service.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -131,27 +130,9 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.restore_outlined,
             onTap: () => _restoreData(context, ref),
           ),
-          _SettingTile(
-            title: 'Keluar',
-            subtitle: 'Keluar dari akun FinBiz',
-            icon: Icons.logout_rounded,
-            onTap: () => _signOut(context, ref),
-          ),
         ],
       ),
     );
-  }
-
-  static Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(authServiceProvider).signOut();
-      if (context.mounted) context.go('/login');
-    } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(authErrorMessage(error))));
-      }
-    }
   }
 
   static Future<void> _editName(

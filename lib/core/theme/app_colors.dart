@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class AppColors {
   static const Color deepNavy = Color(0xFF163A5F);

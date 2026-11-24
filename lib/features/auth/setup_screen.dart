@@ -6,13 +6,13 @@ class SetupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 520),
-            child: Column(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 FinBizLogo(),

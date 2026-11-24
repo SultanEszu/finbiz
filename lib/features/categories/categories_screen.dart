@@ -1,7 +1,7 @@
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/data/models/finance_models.dart';
 import 'package:finbiz/data/repositories/finance_repository.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -248,7 +248,7 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<bool>(
-            value: isExpense,
+            initialValue: isExpense,
             decoration: const InputDecoration(labelText: 'Jenis'),
             items: const [
               DropdownMenuItem(value: true, child: Text('Pengeluaran')),

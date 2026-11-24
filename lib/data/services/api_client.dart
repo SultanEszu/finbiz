@@ -82,6 +82,30 @@ class ApiClient {
         _setCurrentUser(AppUser(id: account['id'] as String, email: account['email'] as String));
       }
     }
+
+    if (_currentUser == null) {
+      if (_accounts.isEmpty) {
+        final account = {
+          'id': _id('user'),
+          'email': 'pengguna@finbiz.local',
+          'full_name': 'Pengguna FinBiz',
+          'role': 'creator',
+          'password_hash': '',
+          'must_change_password': false,
+        };
+        _accounts.add(account);
+        await _persistAccounts();
+      }
+      final account = _accounts.first;
+      _profile = Map<String, dynamic>.from(account);
+      await setSession(
+        token: 'local-session',
+        user: AppUser(
+          id: account['id'] as String,
+          email: account['email'] as String,
+        ),
+      );
+    }
     _initialized = true;
   }
 
@@ -144,9 +168,9 @@ class ApiClient {
 
   Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? body}) async {
     await initialize();
-    body ??= const {};
-    if (path == '/auth/login') return _login(body);
-    if (path == '/auth/register') return _register(body);
+    final payload = body ?? const <String, dynamic>{};
+    if (path == '/auth/login') return _login(payload);
+    if (path == '/auth/register') return _register(payload);
     if (path == '/auth/forgot-password') return {'message': 'Reset kata sandi harus diproses di perangkat ini.'};
     if (path == '/auth/reset-password' || path == '/auth/change-password') {
       throw const ApiException(501, 'Fitur ini belum tersedia pada penyimpanan lokal.');
@@ -158,20 +182,26 @@ class ApiClient {
 
     return _serialized(() async {
       if (path == '/transactions') {
-        _validateCategoryDuplicateTransaction(body);
-        _transactions.insert(0, {'id': _id('tx'), ...body});
+        _validateCategoryDuplicateTransaction(payload);
+        _transactions.insert(0, {'id': _id('tx'), ...payload});
       } else if (path == '/categories') {
-        final name = (body['name'] as String).trim().toLowerCase();
+        final name = (payload['name'] as String).trim().toLowerCase();
         if (_categories.any((item) => (item['name'] as String).trim().toLowerCase() == name)) {
           throw const ApiException(422, 'Nama kategori sudah digunakan.');
         }
-        _categories.add({'id': _id('cat'), ...body});
+        _categories.add({'id': _id('cat'), ...payload});
       } else if (path == '/debts') {
-        _debts.insert(0, {'id': _id('debt'), ...body});
+        _debts.insert(0, {'id': _id('debt'), ...payload});
       } else if (path == '/budgets') {
-        _budgets.add({'id': _id('budget'), ...body});
+        _budgets.add({'id': _id('budget'), ...payload});
       } else if (path == '/savings') {
-        _savings.add({'id': _id('saving'), 'target_name': body['target_name'], 'target_amount': body['target_amount'], 'current_amount': 0, 'target_date': body['target_date']});
+        _savings.add({
+          'id': _id('saving'),
+          'target_name': payload['target_name'],
+          'target_amount': payload['target_amount'],
+          'current_amount': 0,
+          'target_date': payload['target_date'],
+        });
       } else {
         throw const ApiException(404, 'Operasi tidak tersedia dalam mode lokal.');
       }
@@ -182,23 +212,25 @@ class ApiClient {
 
   Future<Map<String, dynamic>> put(String path, {Map<String, dynamic>? body}) async {
     await initialize();
-    body ??= const {};
+    final payload = body ?? const <String, dynamic>{};
     return _serialized(() async {
       if (path.startsWith('/transactions/')) {
         final id = path.split('/').last;
         final index = _transactions.indexWhere((item) => item['id'] == id);
         if (index < 0) throw const ApiException(404, 'Transaksi tidak ditemukan.');
-        _validateCategoryDuplicateTransaction(body);
-        _transactions[index] = {'id': id, ...body};
+        _validateCategoryDuplicateTransaction(payload);
+        _transactions[index] = {'id': id, ...payload};
       } else if (path.startsWith('/categories/')) {
         final id = path.split('/').last;
         final index = _categories.indexWhere((item) => item['id'] == id);
         if (index < 0) throw const ApiException(404, 'Kategori tidak ditemukan.');
-        final name = (body['name'] as String).trim().toLowerCase();
-        if (_categories.any((item) => item['id'] != id && (item['name'] as String).trim().toLowerCase() == name)) {
+        final name = (payload['name'] as String).trim().toLowerCase();
+        if (_categories.any((item) =>
+            item['id'] != id &&
+            (item['name'] as String).trim().toLowerCase() == name)) {
           throw const ApiException(422, 'Nama kategori sudah digunakan.');
         }
-        _categories[index] = {'id': id, ...body};
+        _categories[index] = {'id': id, ...payload};
       } else if (path.startsWith('/profiles/') && path.endsWith('/role')) {
         return {'message': 'Role berhasil diperbarui dalam mode lokal.'};
       } else {
@@ -322,10 +354,28 @@ class ApiClient {
   }
 
   Future<void> clearSession() async {
-    _setCurrentUser(null);
-    _profile = {};
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_sessionKey);
+    // Mode lokal tanpa login: pastikan selalu ada sesi pengguna default.
+    if (_accounts.isEmpty) {
+      final account = {
+        'id': _id('user'),
+        'email': 'pengguna@finbiz.local',
+        'full_name': 'Pengguna FinBiz',
+        'role': 'creator',
+        'password_hash': '',
+        'must_change_password': false,
+      };
+      _accounts.add(account);
+      await _persistAccounts();
+    }
+    final account = _accounts.first;
+    _profile = Map<String, dynamic>.from(account);
+    await setSession(
+      token: 'local-session',
+      user: AppUser(
+        id: account['id'] as String,
+        email: account['email'] as String,
+      ),
+    );
   }
 
   void _validateCategoryDuplicateTransaction(Map<String, dynamic> body) {

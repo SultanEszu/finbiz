@@ -2,7 +2,7 @@ import 'package:finbiz/core/providers/api_providers.dart';
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/data/models/user_profile.dart';
 import 'package:finbiz/data/services/auth_service.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class UserManagementScreen extends ConsumerWidget {

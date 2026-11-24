@@ -1,5 +1,5 @@
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});

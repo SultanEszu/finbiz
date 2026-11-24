@@ -18,7 +18,7 @@ import 'package:finbiz/data/services/auth_service.dart';
 import 'package:finbiz/data/services/api_client.dart';
 import 'package:finbiz/core/theme/app_theme.dart';
 import 'package:finbiz/core/widgets/finbiz_logo.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:finbiz/data/models/app_user.dart';
@@ -45,14 +45,11 @@ GoRouter createAppRouter() {
     initialLocation: '/dashboard',
     refreshListenable: authRefresh,
     redirect: (context, state) {
-      final loggedIn = ApiClient.instance.currentUser != null;
       final loggingIn = state.matchedLocation == '/login' ||
           state.matchedLocation == '/register' ||
-          state.matchedLocation == '/forgot-password';
-      if (!loggedIn && !loggingIn && state.matchedLocation != '/setup') {
-        return '/login';
-      }
-      if (loggedIn && loggingIn) return '/dashboard';
+          state.matchedLocation == '/forgot-password' ||
+          state.matchedLocation == '/setup';
+      if (loggingIn) return '/dashboard';
       return null;
     },
     routes: [
